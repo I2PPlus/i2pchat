@@ -50,6 +50,14 @@
     </ul>
     <p>After the handshake, all traffic switches to the framed binary packet format (4-byte hex length + 4-byte tag + payload).</p>
 
+    <p><strong>Handshake nickname:</strong> The third tab-separated field is the caller's current display name, as configured in <em>Settings → User Details</em>. I2PChat always includes it (<code>CProtocol::newConnectionChat</code> sends <code>mCore.getUserInfos().Nickname</code>); it is optional — a compatible client may omit it by sending <code>CHATSYSTEM\t0.7\n</code>. The receiver (in <code>handleChatProtocolPacket</code>) uses it only opportunistically:</p>
+    <ul>
+      <li>If the caller is unknown, the name is shown in the authorization dialog ("Allow connection from %1?"). With no nickname the dialog falls back to the caller's destination. When authorization is granted, the handshake name is used as the new userlist entry's name (falling back to <code>Unknown</code>) and stored as the received nickname.</li>
+      <li>If the caller is already in the userlist (matched by canonical b32/b64 identity in <code>handleChatProtocolPacket</code>), no dialog appears and the nickname is not authoritative: it is stored only as a display hint via <code>setReceivedUserInfos(NICKNAME, …)</code>, pending the profile exchange.</li>
+      <li>The authoritative nickname is the <code>USER_INFO_NICKNAME</code> (0011) profile field exchanged once the stream is established; the handshake value is an unauthenticated display hint, so never treat it as a verified identity.</li>
+    </ul>
+    <p>Because the handshake nickname is unauthenticated (anyone can claim any name), authorization decisions and userlist lookups must always be destination-based — see the connection lifecycle section below.</p>
+
     <h3>Protocol Tags</h3>
     <p>Tags are 4-character ASCII strings. Two namespaces exist:</p>
 
