@@ -11,8 +11,12 @@
 #include <QBuffer>
 #include <QDateTime>
 #include <QPixmap>
+#include <QTimer>
 
 #include <utility>
+
+const QString CUser::StatusNotifOpenTag = QStringLiteral("<statusmsg>");
+const QString CUser::StatusNotifCloseTag = QStringLiteral("</statusmsg>");
 
 CUser::CUser(CCore &Core, CProtocol &Protocol, QString Name, const QString &I2PDestination, qint32 I2PStream_ID)
   : mCore(Core)
@@ -46,6 +50,8 @@ CUser::CUser(CCore &Core, CProtocol &Protocol, QString Name, const QString &I2PD
   mDateAdded = QDateTime::currentDateTime();
   mLastCommunication = QDateTime::currentDateTime();
   mLastOnline = QDateTime::currentDateTime();
+  mStatusNotifTimer = nullptr;
+  mStatusNotifExpiryMs = CUser::StatusNotifExpiryMsDefault;
 
   if (mI2PDestination.length() == 60) {
     mUseB32Dest = true;
@@ -449,7 +455,7 @@ void CUser::setOnlineState(const ONLINESTATE newState) {
     if (mCurrentOnlineState == USEROFFLINE || mCurrentOnlineState == USERINVISIBLE ||
         mCurrentOnlineState == USERBLOCKEDYOU) {
       if (mLogOnlineStateOfUsers == true) {
-        slotIncomingMessageFromSystem(tr("%1 is online").arg(mName));
+        slotIncomingStatusMessage(tr("%1 is online").arg(mName));
       }
       emit signConnectionOnline();
     }
@@ -457,7 +463,7 @@ void CUser::setOnlineState(const ONLINESTATE newState) {
   } else if (newState == USEROFFLINE || newState == USERINVISIBLE || newState == USERBLOCKEDYOU) {
     if (newState != mCurrentOnlineState) {
       if (mLogOnlineStateOfUsers == true) {
-        slotIncomingMessageFromSystem(tr("%1 is offline").arg(mName));
+        slotIncomingStatusMessage(tr("%1 is offline").arg(mName));
       }
       emit signConnectionOffline();
     }
@@ -492,6 +498,56 @@ void CUser::slotIncomingMessageFromSystem(const QString &newMessage, bool indica
   }
 
   emit signOnlineStateChanged();
+}
+
+void CUser::slotIncomingStatusMessage(const QString &newMessage) {
+  // Keep only the latest status notification: purge every earlier one.
+  for (int i = mAllMessages.size() - 1; i >= 0; i--) {
+    if (mAllMessages[i].contains(StatusNotifOpenTag))
+      mAllMessages.removeAt(i);
+  }
+  for (int i = mNewMessages.size() - 1; i >= 0; i--) {
+    if (mNewMessages[i].contains(StatusNotifOpenTag))
+      mNewMessages.removeAt(i);
+  }
+
+  auto msg = QDateTime::currentDateTime().toString("hh:mm:ss") + tr(" ‣ [System] ") + StatusNotifOpenTag + newMessage +
+             StatusNotifCloseTag + "<br><br>";
+  mStatusNotifMsg = msg;
+  this->mAllMessages.push_back(msg);
+  this->mNewMessages.push_back(msg);
+  mHaveNewUnreadMessages = true;
+
+  if (mStatusNotifTimer == nullptr) {
+    mStatusNotifTimer = new QTimer(this);
+    mStatusNotifTimer->setSingleShot(true);
+    connect(mStatusNotifTimer, &QTimer::timeout, this, [this]() {
+      if (!mStatusNotifMsg.isEmpty()) {
+        mAllMessages.removeAll(mStatusNotifMsg);
+        mNewMessages.removeAll(mStatusNotifMsg);
+        mStatusNotifMsg.clear();
+      }
+      emit signStatusNotifChanged();
+    });
+  }
+  mStatusNotifTimer->start(mStatusNotifExpiryMs);
+
+  // Order matters for the chat view: first drop stale status rows, then the
+  // regular new-message path appends the fresh notification.
+  emit signStatusNotifChanged();
+  emit signNewMessageReceived();
+  emit signOnlineStateChanged();
+}
+
+void CUser::removeStatusNotification() {
+  if (mStatusNotifTimer != nullptr)
+    mStatusNotifTimer->stop();
+  if (!mStatusNotifMsg.isEmpty()) {
+    mAllMessages.removeAll(mStatusNotifMsg);
+    mNewMessages.removeAll(mStatusNotifMsg);
+    mStatusNotifMsg.clear();
+  }
+  emit signStatusNotifChanged();
 }
 
 void CUser::setInvisible(bool b) {

@@ -118,6 +118,7 @@ ChatWidget::ChatWidget(CUser &user, CCore &Core, QDialog *parent /* = 0 */)
   message->installEventFilter(m_event_eater);
 
   connect(&user, SIGNAL(signNewMessageReceived()), this, SLOT(newMessageReceived()));
+  connect(&user, SIGNAL(signStatusNotifChanged()), this, SLOT(statusNotifChanged()));
 
   connect(&user, SIGNAL(signOnlineStateChanged()), this, SLOT(changeWindowsTitle()));
 
@@ -822,6 +823,12 @@ void ChatWidget::addAllMessages() {
 void ChatWidget::addMessage(QString text) {
   CTextEmotionChanger::exemplar()->checkMessageForEmoticons(text);
 
+  // Strip status-notification markers before any rendering/parsing; the
+  // backend uses them to identify (and replace/expire) status rows.
+  bool isStatusNotif = (text.contains(CUser::StatusNotifOpenTag));
+  text.remove(CUser::StatusNotifOpenTag);
+  text.remove(CUser::StatusNotifCloseTag);
+
   if (mChatStyle == "classic") {
     QTextCursor cursor(chat->document());
     cursor.movePosition(QTextCursor::End);
@@ -847,7 +854,7 @@ void ChatWidget::addMessage(QString text) {
     text.remove(QRegularExpression("<i>[^<]*</i>"));
   } else if (type == MsgSystem) {
     static int sysMsgCounter = 0;
-    cancelUrl = QStringLiteral("closeSystem:%1").arg(++sysMsgCounter);
+    cancelUrl = QStringLiteral("closesystem:%1").arg(++sysMsgCounter);
   }
 
   QString typeClass;
@@ -980,10 +987,27 @@ void ChatWidget::addMessage(QString text) {
   auto *item = new QStandardItem(text);
   item->setEditable(false);
   item->setData(type, MsgTypeRole);
+  if (type == MsgSystem && isStatusNotif)
+    item->setData(true, StatusNotifRole);
   if (!cancelUrl.isEmpty())
     item->setData(cancelUrl, CancelUrlRole);
   mChatModel->appendRow(item);
   mChatListView->scrollToBottom();
+}
+
+void ChatWidget::statusNotifChanged() {
+  if (mChatStyle == "classic") {
+    // Backend already purged stale status rows; rebuild shows exactly the
+    // stored set. (getAllChatMessages clears the new-message queue, so the
+    // follow-up signNewMessageReceived cannot duplicate the status row.)
+    addAllMessagesClassic();
+    return;
+  }
+  for (int i = mChatModel->rowCount() - 1; i >= 0; i--) {
+    auto *item = mChatModel->item(i);
+    if (item != NULL && item->data(StatusNotifRole).toBool())
+      mChatModel->removeRow(i);
+  }
 }
 
 void ChatWidget::setTextColor() {
@@ -1196,15 +1220,23 @@ void ChatWidget::anchorClicked(const QUrl &link) {
     return;
   }
 
-  if (link.scheme() == "closeSystem") {
-    if (mChatStyle == "classic")
+  // QUrl::scheme() is always lowercase, so the scheme must be lower-case.
+  if (link.scheme() == "closesystem") {
+    if (mChatStyle == "classic") {
       addAllMessagesClassic();
-    else
+    } else {
       for (int i = 0; i < mChatModel->rowCount(); ++i)
         if (mChatModel->item(i)->data(CancelUrlRole).toString() == link.toString()) {
+          auto *item = mChatModel->item(i);
+          bool statusRow = item->data(StatusNotifRole).toBool();
           mChatModel->removeRow(i);
+          // Keep the backend in sync so a closed status notification cannot
+          // resurrect on the next reload.
+          if (statusRow)
+            user.removeStatusNotification();
           break;
         }
+    }
     return;
   }
 

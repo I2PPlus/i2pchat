@@ -69,6 +69,13 @@ public:
   void getFocus();
   void loadChatStyle();
 
+  // Test accessors (also used by tools/tests).
+  QStandardItemModel *chatModel() const { return mChatModel; }
+  QListView *chatListView() const { return mChatListView; }
+  // Set on system rows that are online/offline status notifications
+  // (only the latest persists and it auto-expires).
+  static const int StatusNotifRole = Qt::UserRole + 11;
+
 protected:
   void applyThemeCss(const QString &style, ChatBubbleStyle &bs, ChatDelegate::BubbleColors &dc);
   void dragEnterEvent(QDragEnterEvent *event);
@@ -79,6 +86,7 @@ private slots:
   void addAllMessages();
   void addAllMessagesClassic();
   void addMessage(QString text);
+  void statusNotifChanged();
   void setTextColor();
   void newMessageReceived();
   void setBold(bool t);

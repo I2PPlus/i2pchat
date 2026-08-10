@@ -12,6 +12,7 @@
 #include <QFont>
 #include <QMap>
 #include <QStringList>
+#include <QTimer>
 #include <QtGlobal>
 
 namespace User {
@@ -112,6 +113,14 @@ public:
   void setDateAdded(const QDateTime &dt) { mDateAdded = dt; }
   void setLastCommunication(const QDateTime &dt) { mLastCommunication = dt; }
   void setLastOnline(const QDateTime &dt) { mLastOnline = dt; }
+  // Status notifications: only the most recent one persists; it auto-expires
+  // after StatusNotifExpiryMs and can be closed via removeStatusNotification().
+  static const QString StatusNotifOpenTag;
+  static const QString StatusNotifCloseTag;
+  static const int StatusNotifExpiryMsDefault = 10 * 60 * 1000;
+
+  // Test hook: override the status-notification expiry timeout.
+  void setStatusNotifExpiryMs(int ms) { mStatusNotifExpiryMs = ms; }
 
 public slots:
   void slotSendChatMessage(const QString &Message);
@@ -120,6 +129,8 @@ public slots:
   void slotIncomingFileOffer(const QString &data);
   void slotIncomingNewChatMessage(QString newMessage);
   void slotIncomingMessageFromSystem(const QString &newMessage, bool indicateWithSoundAndIcon = false);
+  void slotIncomingStatusMessage(const QString &newMessage);
+  void removeStatusNotification();
   void cancelPendingMessage(qint32 id);
   void cancelPendingFileOffer(qint32 id);
 
@@ -133,6 +144,7 @@ signals:
   void signNewAvatarImage();
   void signSaveUnsentMessages(QString I2PDest);
   void signPendingCanceled();
+  void signStatusNotifChanged();
 
 private:
   CCore &mCore;
@@ -155,6 +167,11 @@ private:
   QString mClientVersion;
   QStringList mAllMessages;
   QStringList mNewMessages;
+  // Tracking for the single active status notification (online/offline):
+  // the exact stored message plus the single-shot expiry timer.
+  QString mStatusNotifMsg;
+  QTimer *mStatusNotifTimer;
+  int mStatusNotifExpiryMs;
   QStringList mUnsentedMessages;
   /* Cancel mechanism: mNextCancelId increments for each cancelP* call.
      mPendingMsgIdx / mPendingFileIdx map cancelId → index into mAllMessages
