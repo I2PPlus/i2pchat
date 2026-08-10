@@ -42,6 +42,10 @@ public:
   const QList<CUser *> getUserList() const;
   bool validateI2PDestination(const QString &I2PDestination) const;
 
+  // Canonical 52-char b32 hash of a full base64 destination (without the
+  // ".b32.i2p" suffix); empty if the string is not a base64 destination.
+  static QString toBase32Destination(const QString &b64Destination);
+
 signals:
   void signUserStatusChanged();
 
