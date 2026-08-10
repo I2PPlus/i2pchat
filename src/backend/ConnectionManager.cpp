@@ -18,15 +18,15 @@ CConnectionManager::CConnectionManager(QString SamHost, QString SamPort, QString
 }
 
 bool CConnectionManager::doCreateSession(SESSION_ENUMS::SESSION_STYLEV3 SessionStyle,
-                                         QString SamPrivKey,
+                                         const QString &SamPrivKey,
                                          QString SessionOptions) {
   using namespace SESSION_ENUMS;
 
   QString BridgeName = generateBridgeName();
 
   if (SessionStyle == STREAM && StreamController == NULL) {
-    this->StreamController = new CSessionController(
-      mSamHost, mSamPort, BridgeName, std::move(SamPrivKey), mConfigPath, std::move(SessionOptions));
+    this->StreamController =
+      new CSessionController(mSamHost, mSamPort, BridgeName, SamPrivKey, mConfigPath, std::move(SessionOptions));
 
     connect(StreamController, SIGNAL(signDebugMessages(const QString)), this, SIGNAL(signDebugMessages(const QString)));
 
