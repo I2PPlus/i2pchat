@@ -185,17 +185,38 @@ CUser *CUserManager::getUserByI2P_Destination(const QString &Destination) const 
   // under one form must be found when queried under the other, otherwise an
   // already-known user is treated as unknown — re-asked for authorization
   // and added a second time (duplicate username in the userlist).
-  if (Destination.size() >= 500) {
-    const QString b32 = toBase32Destination(Destination);
+  //
+  // Stored b32 addresses may be in legacy forms ("http://hash.b32.i2p",
+  // stray whitespace), so both sides are normalized to the bare 52-char
+  // hash before comparing.
+  QString query = Destination.trimmed();
+  const int scheme = query.indexOf(QStringLiteral("://"));
+  if (scheme != -1)
+    query = query.mid(scheme + 3);
+  if (query.endsWith(QStringLiteral(".b32.i2p"), Qt::CaseInsensitive))
+    query.chop(8);
+
+  if (query.size() >= 500) {
+    // Query is a full base64 destination: derive its b32 hash and match
+    // any contact stored as a b32 address.
+    const QString b32 = toBase32Destination(query);
     if (!b32.isEmpty())
-      for (auto it : mUsers)
-        if (it->getUsedB32Dest() && it->getOriginalB32Address().left(52) == b32)
+      for (auto it : mUsers) {
+        QString stored = it->getI2PDestination().trimmed();
+        const int sScheme = stored.indexOf(QStringLiteral("://"));
+        if (sScheme != -1)
+          stored = stored.mid(sScheme + 3);
+        if (stored.endsWith(QStringLiteral(".b32.i2p"), Qt::CaseInsensitive))
+          stored.chop(8);
+        if (stored.size() == 52 && stored == b32)
           return it;
-  } else if (Destination.size() == 60 && Destination.endsWith(QStringLiteral(".b32.i2p"), Qt::CaseInsensitive)) {
-    const QString queryB32 = Destination.left(52);
+      }
+  } else if (query.size() == 52) {
+    // Query is a b32 address: match any contact stored as a full
+    // base64 destination with the same hash.
     for (auto it : mUsers) {
       const QString stored = it->getI2PDestination();
-      if (stored.size() >= 500 && toBase32Destination(stored) == queryB32)
+      if (stored.size() >= 500 && toBase32Destination(stored) == query)
         return it;
     }
   }
