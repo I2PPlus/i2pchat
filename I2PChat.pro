@@ -139,10 +139,12 @@ tests {
 	SOURCES += \
 		tools/tests/t_main.cpp \
 		tools/tests/t_delegate.cpp \
-		tools/tests/t_chatwidget.cpp
+		tools/tests/t_chatwidget.cpp \
+		tools/tests/t_usermanager.cpp
 	HEADERS += \
 		tools/tests/t_delegate.h \
-		tools/tests/t_chatwidget.h
+		tools/tests/t_chatwidget.h \
+		tools/tests/t_usermanager.h
 	INCLUDEPATH += tools/tests
 	TARGET = I2PChat-tests
 	DESTDIR = temp/tests/bin/

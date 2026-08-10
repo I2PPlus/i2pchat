@@ -1010,6 +1010,13 @@ void MainWindow::incomingUserAuthorizationRequest(const QString &destination, in
               // userlist guard in handleChatProtocolPacket didn't fire)
               CUser *User = Core->getUserManager()->getUserByI2P_Destination(destination);
               if (User) {
+                // The contact was found by canonical identity even though the
+                // stored form differs (b32 vs b64): persist the full base64
+                // destination so the match is exact from now on.
+                if (User->getUsedB32Dest() && destination.size() > 60) {
+                  User->setReplaceB32WithB64(destination);
+                  Core->getUserManager()->saveUserList();
+                }
                 User->setI2PStreamID(streamID);
                 User->setProtocolVersion(version);
                 User->setConnectionStatus(ONLINE);

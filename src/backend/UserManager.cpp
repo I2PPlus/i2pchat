@@ -2,10 +2,12 @@
 
 #include "UserManager.h"
 
+#include "Base.h"
 #include "Core.h"
 #include "Protocol.h"
 #include "UserBlockManager.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
 
@@ -153,11 +155,50 @@ CUser *CUserManager::getUserByI2P_ID(qint32 ID) const {
 
   return NULL;
 }
+QString CUserManager::toBase32Destination(const QString &b64Destination) {
+  if (b64Destination.size() < 500)
+    return QString();
+
+  uint8_t raw[2048];
+  size_t rawLen =
+    i2p::data::Base64ToByteStream(b64Destination.toUtf8().constData(), b64Destination.size(), raw, sizeof(raw));
+  if (rawLen == 0 || rawLen >= sizeof(raw))
+    return QString();
+
+  QByteArray hash = QCryptographicHash::hash(QByteArray(reinterpret_cast<const char *>(raw), static_cast<int>(rawLen)),
+                                             QCryptographicHash::Sha256);
+  if (hash.size() != 32)
+    return QString();
+
+  char b32[64];
+  i2p::data::ByteStreamToBase32(reinterpret_cast<const uint8_t *>(hash.constData()), hash.size(), b32, 52);
+  b32[52] = '\0';
+  return QString::fromLatin1(b32);
+}
+
 CUser *CUserManager::getUserByI2P_Destination(const QString &Destination) const {
   for (auto it : mUsers)
     if (it->getI2PDestination() == Destination)
       return it;
 
+  // b32 and b64 are two encodings of the same identity. A contact stored
+  // under one form must be found when queried under the other, otherwise an
+  // already-known user is treated as unknown — re-asked for authorization
+  // and added a second time (duplicate username in the userlist).
+  if (Destination.size() >= 500) {
+    const QString b32 = toBase32Destination(Destination);
+    if (!b32.isEmpty())
+      for (auto it : mUsers)
+        if (it->getUsedB32Dest() && it->getOriginalB32Address().left(52) == b32)
+          return it;
+  } else if (Destination.size() == 60 && Destination.endsWith(QStringLiteral(".b32.i2p"), Qt::CaseInsensitive)) {
+    const QString queryB32 = Destination.left(52);
+    for (auto it : mUsers) {
+      const QString stored = it->getI2PDestination();
+      if (stored.size() >= 500 && toBase32Destination(stored) == queryB32)
+        return it;
+    }
+  }
   return NULL;
 }
 
