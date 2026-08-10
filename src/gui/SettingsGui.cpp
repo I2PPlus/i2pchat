@@ -111,9 +111,11 @@ SettingsGui::SettingsGui(CCore &Core, QWidget *parent, Qt::WindowFlags flags)
   connect(mThemeWatcher, &QFileSystemWatcher::directoryChanged, this, &SettingsGui::slotThemeDirChanged);
 
   connect(spin_InLength, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateInboundHopCount);
-  connect(spin_InLengthVariance, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateInboundHopCount);
+  connect(
+    spin_InLengthVariance, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateInboundHopCount);
   connect(spin_OutLength, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateOutboundHopCount);
-  connect(spin_OutLengthVariance, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateOutboundHopCount);
+  connect(
+    spin_OutLengthVariance, QOverload<int>::of(&QSpinBox::valueChanged), this, &SettingsGui::validateOutboundHopCount);
 }
 
 SettingsGui::~SettingsGui() {
@@ -682,7 +684,8 @@ void SettingsGui::validateInboundHopCount() {
     spin_InLengthVariance->blockSignals(true);
     spin_InLengthVariance->setValue(1 - length);
     spin_InLengthVariance->blockSignals(false);
-    QMessageBox::warning(this, tr("Invalid Hop Count"),
+    QMessageBox::warning(this,
+                         tr("Invalid Hop Count"),
                          tr("Hop count (length + variation) must be at least 1.\nVariation adjusted to %1.")
                            .arg(spin_InLengthVariance->value()));
   }
@@ -695,7 +698,8 @@ void SettingsGui::validateOutboundHopCount() {
     spin_OutLengthVariance->blockSignals(true);
     spin_OutLengthVariance->setValue(1 - length);
     spin_OutLengthVariance->blockSignals(false);
-    QMessageBox::warning(this, tr("Invalid Hop Count"),
+    QMessageBox::warning(this,
+                         tr("Invalid Hop Count"),
                          tr("Hop count (length + variation) must be at least 1.\nVariation adjusted to %1.")
                            .arg(spin_OutLengthVariance->value()));
   }
