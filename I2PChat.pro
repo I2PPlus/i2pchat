@@ -130,3 +130,21 @@ include(gitversion.pri)
 
 # Add build timestamp echo commands using QMAKE_POST_LINK
 QMAKE_POST_LINK = @echo "Build complete: binary created at $$(DESTDIR)$(TARGET) at: \$$(date '+%Y-%m-%d %H:%M:%S')"
+
+# Unit/regression tests: build with `qmake "CONFIG+=tests" I2PChat.pro`,
+# run with tests/bin/I2PChat-tests. Replaces Main.cpp with its own main.
+tests {
+	QT += testlib
+	SOURCES -= src/backend/Main.cpp
+	SOURCES += \
+		tools/tests/t_main.cpp \
+		tools/tests/t_delegate.cpp \
+		tools/tests/t_chatwidget.cpp
+	HEADERS += \
+		tools/tests/t_delegate.h \
+		tools/tests/t_chatwidget.h
+	INCLUDEPATH += tools/tests
+	TARGET = I2PChat-tests
+	DESTDIR = temp/tests/bin/
+	QMAKE_POST_LINK =
+}

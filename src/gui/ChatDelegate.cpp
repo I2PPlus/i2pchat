@@ -432,10 +432,16 @@ bool ChatDelegate::editorEvent(QEvent *event,
                                QAbstractItemModel *model,
                                const QStyleOptionViewItem &option,
                                const QModelIndex &index) {
-  if (event->type() != QEvent::MouseButtonRelease)
+  // QAbstractItemView only forwards mouse press events to editorEvent
+  // (releases are delivered solely while an editor is open), so the icon
+  // and anchor handling below must run on MouseButtonPress.
+  if (event->type() != QEvent::MouseButtonPress)
     return QStyledItemDelegate::editorEvent(event, model, option, index);
 
   auto *me = static_cast<QMouseEvent *>(event);
+  if (me->button() != Qt::LeftButton)
+    return QStyledItemDelegate::editorEvent(event, model, option, index);
+
   QString text = index.data(Qt::DisplayRole).toString();
   int type = index.data(MsgTypeRole).toInt();
 
