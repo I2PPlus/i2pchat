@@ -30,6 +30,7 @@ DebugMessages::DebugMessages(CCore &core, QDialog *parent)
   mono.setStyleHint(QFont::Monospace);
   mono.setPointSize(9);
   Sam_txt->setFont(mono);
+  connection_txt->setFont(mono);
 
   DebugMessageManager = core.getDebugMessageHandler();
 
