@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
 #include <QSettings>
 #include <QUrl>
 
@@ -417,11 +418,18 @@ static void tryDisplayImageInline(const QString &filePath, CUser *user) {
   if (!isImageExtension(filePath))
     return;
 
-  QImage img(filePath);
+  const int MAX_CHAT_WIDTH = 400;
+
+  // Decode through QImageReader with a bounded target size instead of reading
+  // the whole image into memory: for JPEG/PNG/WEBP the decode is scaled during
+  // loading, so a multi-hundred-MB photo never materializes in the heap.
+  QImageReader reader(filePath);
+  reader.setAutoTransform(true);
+  reader.setScaledSize(QSize(MAX_CHAT_WIDTH * 2, MAX_CHAT_WIDTH * 2));
+  QImage img = reader.read();
   if (img.isNull())
     return;
 
-  const int MAX_CHAT_WIDTH = 400;
   QImage scaled = CCore::scaleImageLanczos(img, MAX_CHAT_WIDTH);
 
   QDir().mkpath("/tmp/i2pchat");
