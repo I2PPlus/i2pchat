@@ -510,13 +510,14 @@ bool ChatDelegate::editorEvent(QEvent *event,
     return true;
   }
 
-  // Check cancel icon click for pending / system messages
-  if (type == MsgPending || type == MsgSystem) {
-    QString cancelUrl = index.data(CancelUrlRole).toString();
-    if (!cancelUrl.isEmpty() && cancelIconRect(bubbleRect).contains(me->pos())) {
-      emit linkClicked(QUrl(cancelUrl));
-      return true;
-    }
+  // Check cancel icon click for any row that carries a cancel affordance.
+  // Pending messages, sent offers, received offers and system notices all set
+  // CancelUrlRole, and the icon is drawn in paint() whenever that role is set;
+  // the hit test must mirror that set so the ✕ is not dead on offer rows.
+  QString cancelUrl = index.data(CancelUrlRole).toString();
+  if (!cancelUrl.isEmpty() && cancelIconRect(bubbleRect).contains(me->pos())) {
+    emit linkClicked(QUrl(cancelUrl));
+    return true;
   }
 
   return QStyledItemDelegate::editorEvent(event, model, option, index);
