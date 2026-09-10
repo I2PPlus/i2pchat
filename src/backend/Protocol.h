@@ -148,6 +148,7 @@ using namespace Protocol_Info;
 using namespace PROTOCOL_TAGS;
 class CCore;
 class CUser;
+class CI2PStream;
 class CProtocol : public QObject {
   Q_OBJECT
 public:
@@ -165,6 +166,11 @@ public:
   void send(const MESSAGES_TAGS TAG, const qint32 ID, const QString &Data) const;
   void send(const COMMANDS_TAGS TAG, const qint32 ID) const;
 
+  // Write an HTTP response and tear the stream down only after the socket has
+  // drained and disconnected. Used by the web-profile handler and the bounded-
+  // memory file streaming path.
+  void sendHttpResponseAndClose(qint32 ID, CI2PStream *stream, const QByteArray &response);
+
 public slots:
   void slotInputUnknown(const qint32 ID, const QByteArray &Data);
   void slotInputKnown(const qint32 ID, const QByteArray &Data);
@@ -176,6 +182,7 @@ private:
   void handleChatProtocolPacket(const qint32 ID, const QByteArray &Data, class CI2PStream *stream);
   void handleFileTransferProtocolPacket(const qint32 ID, const QByteArray &Data, class CI2PStream *stream);
   void handleWebProfileProtocolPacket(const qint32 ID, const QByteArray &Data, class CI2PStream *stream);
+  void startStreamFileResponse(qint32 ID, CI2PStream *stream, const QString &filePath, bool headOnly);
   void loadBans();
   void saveBans();
 

@@ -44,6 +44,7 @@ public:
   qint32 getID() const { return mID; }
   StreamMode getStreamMode() const { return mMode; }
   Type getConnectionType() const { return mConnectionType; }
+  QTcpSocket *getTcpSocket() { return &mTcpSocket; }
   bool getFIRSTPACKETCHAT_alreadySent() const { return mFIRSTPACKETCHAT_alreadySent; }
   QString getUsedFor() const { return mUsedFor; };
   void setConnectionType(const Type newTyp);

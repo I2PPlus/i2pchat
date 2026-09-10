@@ -2,6 +2,7 @@
 
 #include "Protocol.h"
 
+#include "ConnectionManager.h"
 #include "Core.h"
 #include "FileTransferSend.h"
 #include "HttpServer.h"
@@ -24,6 +25,110 @@ constexpr int MAX_LOGIN_ATTEMPTS = 3;
 constexpr qint64 BAN_DURATION_MS = 3600 * 1000;
 constexpr qint64 CLEANUP_INTERVAL_MS = 300000;
 const QString BANS_MAGIC = "I2PChat_BANv1\t";
+
+// Large web-profile files are streamed from disk in bounded chunks instead of
+// being read into a single QByteArray, so serving e.g. a multi-gigabyte file
+// never balloons the process heap.
+constexpr qint64 STREAM_CHUNK_SIZE = 64 * 1024;
+constexpr qint64 STREAM_HIGH_WATER = 512 * 1024;
+constexpr qint64 STREAM_FILE_THRESHOLD = 1024 * 1024;
+
+bool isTransformableWebFile(const QString &fileName) {
+  const QString suffix = QFileInfo(fileName).suffix().toLower();
+  return suffix == "html" || suffix == "htm" || suffix == "css" || suffix == "js";
+}
+
+// Streams one file over an HTTP connection with bounded memory: chunks are
+// handed to QTcpSocket only while its outgoing buffer is below a high-water
+// mark, and the stream is torn down just like sendHttpResponseAndClose does
+// once everything has been transmitted. Self-deletes when done.
+class StreamingFileResponse : public QObject {
+public:
+  StreamingFileResponse(CProtocol *proto,
+                        qint32 ID,
+                        CI2PStream *stream,
+                        const QString &filePath,
+                        const QByteArray &header,
+                        bool headOnly)
+    : QObject(proto)
+    , mProto(proto)
+    , mID(ID)
+    , mStream(stream)
+    , mSocket(stream->getTcpSocket())
+    , mFile(filePath)
+    , mHeader(header)
+    , mHeadOnly(headOnly) {}
+
+  void start() {
+    if (mSocket->state() != QAbstractSocket::ConnectedState) {
+      mProto->sendHttpResponseAndClose(mID, mStream, QByteArray());
+      mFinished = true;
+      deleteLater();
+      return;
+    }
+    connect(mSocket, &QTcpSocket::bytesWritten, this, [this](qint64) { pump(); });
+    connect(mSocket, &QTcpSocket::disconnected, this, [this]() {
+      if (mFinished)
+        return;
+      mFinished = true;
+      mProto->sendHttpResponseAndClose(mID, mStream, QByteArray());
+      deleteLater();
+    });
+    pump();
+  }
+
+private:
+  void closeFinished() {
+    if (mFinished)
+      return;
+    mFinished = true;
+    mProto->sendHttpResponseAndClose(mID, mStream, QByteArray());
+    deleteLater();
+  }
+
+  void pump() {
+    if (mSocket->state() != QAbstractSocket::ConnectedState)
+      return;
+
+    if (!mHeaderQueued) {
+      mSocket->write(mHeader);
+      mHeaderQueued = true;
+      if (mHeadOnly) {
+        closeFinished();
+        return;
+      }
+    }
+
+    if (!mFileQueued) {
+      if (!mFile.open(QIODevice::ReadOnly) || !mFile.isReadable()) {
+        closeFinished();
+        return;
+      }
+      mFileQueued = true;
+    }
+
+    while (mSocket->bytesToWrite() < STREAM_HIGH_WATER && !mFile.atEnd()) {
+      QByteArray chunk = mFile.read(STREAM_CHUNK_SIZE);
+      if (chunk.isEmpty())
+        break;
+      mSocket->write(chunk);
+    }
+
+    if (mFile.atEnd() && mSocket->bytesToWrite() == 0)
+      closeFinished();
+  }
+
+  CProtocol *mProto;
+  qint32 mID;
+  CI2PStream *mStream;
+  QTcpSocket *mSocket;
+  QFile mFile;
+  QByteArray mHeader;
+  bool mHeaderQueued = false;
+  bool mFileQueued = false;
+  bool mHeadOnly = false;
+  bool mFinished = false;
+};
 
 QString generateSessionToken() {
   return QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -768,8 +873,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
     QByteArray resp = CSimpleHttpServer::tryCustomErrorPage(docroot, 405, QStringLiteral("Method Not Allowed"));
     if (resp.isEmpty())
       resp = CSimpleHttpServer::buildErrorResponse(405, "Method Not Allowed");
-    *(stream) << resp;
-    mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+    sendHttpResponseAndClose(ID, stream, resp);
     return;
   }
 
@@ -821,8 +925,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
         resp = CSimpleHttpServer::buildAuthRequiredResponse(realm);
       }
       clearCookieInResponse(resp);
-      *(stream) << resp;
-      mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+      sendHttpResponseAndClose(ID, stream, resp);
       return;
     }
     QByteArray redirect;
@@ -832,8 +935,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
     if (shallDestroySession)
       clearCookieInResponse(redirect);
     redirect += "\r\n";
-    *(stream) << redirect;
-    mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+    sendHttpResponseAndClose(ID, stream, redirect);
     return;
   }
 
@@ -851,8 +953,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
     } else {
       resp = CSimpleHttpServer::buildAuthRequiredResponse(realm);
     }
-    *(stream) << resp;
-    mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+    sendHttpResponseAndClose(ID, stream, resp);
     {
       QMutexLocker locker(&mRateLimitMutex);
       auto &re = mRateLimits[remoteDest];
@@ -873,8 +974,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
       redirect += "Location: /\r\n";
       redirect += "Content-Length: 0\r\n";
       redirect += "\r\n";
-      *(stream) << redirect;
-      mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+      sendHttpResponseAndClose(ID, stream, redirect);
       return;
     }
     if (authUser.isEmpty()) {
@@ -890,8 +990,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
       } else {
         resp = CSimpleHttpServer::buildAuthRequiredResponse(realm);
       }
-      *(stream) << resp;
-      mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+      sendHttpResponseAndClose(ID, stream, resp);
       {
         QMutexLocker locker(&mRateLimitMutex);
         auto &re = mRateLimits[remoteDest];
@@ -916,8 +1015,7 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
     redirect += "Content-Length: 0\r\n";
     setCookieInResponse(redirect, QString::fromUtf8(newSessionToken), sessionMaxAgeSecs);
     redirect += "\r\n";
-    *(stream) << redirect;
-    mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+    sendHttpResponseAndClose(ID, stream, redirect);
     return;
   }
 
@@ -953,6 +1051,10 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
 
   QByteArray response;
   if (file.exists() && file.isReadable() && file.isFile()) {
+    if (file.size() >= STREAM_FILE_THRESHOLD && !isTransformableWebFile(file.fileName())) {
+      startStreamFileResponse(ID, stream, file.absoluteFilePath(), req.method == QStringLiteral("HEAD"));
+      return;
+    }
     response = CSimpleHttpServer::buildResponse(req, file, docroot, nickname, avatarB64, myDest);
   } else if (file.exists() && file.isDir()) {
     QFileInfo indexFile(file.absoluteFilePath() + QStringLiteral("/index.html"));
@@ -992,8 +1094,41 @@ void CProtocol::handleWebProfileProtocolPacket(const qint32 ID, const QByteArray
   if (shallCreateSession && !newSessionToken.isEmpty())
     setCookieInResponse(response, QString::fromUtf8(newSessionToken), sessionMaxAgeSecs);
 
+  sendHttpResponseAndClose(ID, stream, response);
+}
+
+void CProtocol::sendHttpResponseAndClose(qint32 ID, CI2PStream *stream, const QByteArray &response) {
   *(stream) << response;
-  mCore.getConnectionManager()->doDestroyStreamObjectByID(ID);
+
+  // The response is handed to QTcpSocket asynchronously. Destroying the
+  // stream (and with it the socket) right here would discard any bytes still
+  // queued in the socket write buffer, truncating large payloads such as
+  // images. Close gracefully instead and only tear the stream down once the
+  // socket has actually disconnected — i.e. after all bytes were flushed.
+  CConnectionManager *cm = mCore.getConnectionManager();
+  QTcpSocket *sock = stream->getTcpSocket();
+
+  if (sock->state() == QAbstractSocket::UnconnectedState) {
+    cm->doDestroyStreamObjectByID(ID);
+    return;
+  }
+
+  QObject::connect(sock, &QTcpSocket::disconnected, cm, [cm, ID]() { cm->doDestroyStreamObjectByID(ID); });
+
+  // Safety net: a peer that never closes its side must not leak a stream.
+  // No-op if the stream was already destroyed.
+  QTimer::singleShot(30000, cm, [cm, ID]() {
+    if (cm->getStreamObjectByID(ID) != NULL)
+      cm->doDestroyStreamObjectByID(ID);
+  });
+
+  stream->doDisconnect();
+}
+
+void CProtocol::startStreamFileResponse(qint32 ID, CI2PStream *stream, const QString &filePath, bool headOnly) {
+  QFileInfo fi(filePath);
+  QByteArray header = CSimpleHttpServer::buildStreamingHeader(fi);
+  (new StreamingFileResponse(this, ID, stream, filePath, header, headOnly))->start();
 }
 
 void CProtocol::cleanupRateLimits() {

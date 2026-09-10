@@ -26,6 +26,7 @@ public:
                                   const QByteArray &avatarBase64,
                                   const QString &myDest);
   static QByteArray buildDirectoryListing(const QFileInfo &dir, const QString &requestPath);
+  static QByteArray buildStreamingHeader(const QFileInfo &file);
   static QByteArray buildAuthRequiredResponse(const QString &realm);
   static QByteArray buildErrorResponse(int status, const QString &statusText);
   static QByteArray tryCustomErrorPage(const QString &docroot, int statusCode, const QString &statusText);
