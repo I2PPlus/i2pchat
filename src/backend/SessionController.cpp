@@ -178,6 +178,13 @@ void CSessionController::slotReadFromSocket() {
       }
       break;
     }
+    case SAM_PING: {
+      // SAM v3.2+ bridge keepalive — answer PONG so the bridge does not drop the session.
+      mTcpSocket.write(("PONG " + sam.Message + '\n').toUtf8());
+      mTcpSocket.flush();
+      emit signDebugMessages(truncateDbg("CStreamController: PONG reply"));
+      break;
+    }
     case ERROR_IN_ANALYSE: {
       emit signDebugMessages(truncateDbg("CStreamController: ERROR_IN_ANALYSE " + t));
       break;
