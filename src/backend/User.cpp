@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QPixmap>
 #include <QTimer>
+#include <QUrl>
 
 #include <utility>
 
@@ -218,17 +219,23 @@ void CUser::slotIncomingFileOffer(const QString &data) {
   if (parts.size() < 2)
     return;
 
-  QString fileName = parts.at(0);
+  const QString& fileName = parts.at(0);
   quint64 fileSize = parts.at(1).toULongLong();
 
   QString sizeStr, sizeType;
   mCore.doConvertNumberToTransferSize(fileSize, sizeStr, sizeType, false);
 
+  // HTML-escape the displayed name and percent-encode the href so filenames
+  // with spaces, '#', ':', quotes or '<'/'&' survive both the HTML attribute
+  // and the QUrl round-trip on the click side.
+  QString displayName = fileName.toHtmlEscaped();
+  QString urlName = QString::fromLatin1(QUrl::toPercentEncoding(fileName));
+
   QString msg = QDateTime::currentDateTime().toString("hh:mm:ss") + " ‣ " +
                 tr("%1 (%2 %3) "
                    "<a href=\"fileoffer:accept:%4\">[Accept]</a> "
                    "<a href=\"fileoffer:reject:%4\">[Reject]</a><br>")
-                  .arg(fileName, sizeStr, sizeType, fileName.toHtmlEscaped());
+                  .arg(displayName, sizeStr, sizeType, urlName);
 
   mAllMessages.push_back(msg);
   mNewMessages.push_back(msg);
