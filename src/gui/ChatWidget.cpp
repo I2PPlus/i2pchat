@@ -920,7 +920,7 @@ void ChatWidget::addMessage(QString text) {
       text = QStringLiteral("<div class=\"msg msg-fileoffer sent\">%1<span class=\"msg-time\">%2</span>: %3</div>")
                .arg(sentOfferIconHtml(), timePart.toHtmlEscaped(), body);
       if (!fileName.isEmpty()) {
-        QString url = QStringLiteral("cancelsentfile:%1").arg(fileName);
+        QString url = QStringLiteral("cancelsentfile:%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(fileName)));
         if (mChatStyle == "classic")
           text.replace(QRegularExpression("</div>\\s*$"),
                        QStringLiteral("<a href=\"%1\" class=\"cancel-icon\">✕</a></div>").arg(url));
@@ -937,7 +937,7 @@ void ChatWidget::addMessage(QString text) {
         fileName = QUrl::fromPercentEncoding(am.captured(1).toUtf8());
       QString cancelLink;
       if (!fileName.isEmpty()) {
-        QString url = QStringLiteral("cancelfileoffer:%1").arg(fileName.toHtmlEscaped());
+        QString url = QStringLiteral("cancelfileoffer:%1").arg(QString::fromLatin1(QUrl::toPercentEncoding(fileName)));
         if (mChatStyle == "classic")
           cancelLink = QStringLiteral("<a href=\"%1\" class=\"cancel-icon\">✕</a>").arg(url);
         else
@@ -1244,6 +1244,7 @@ void ChatWidget::anchorClicked(const QUrl &link) {
     // Sender cancels a not-yet-accepted outgoing offer (mirrors the old
     // transfer dialog where either party could cancel before completion).
     QString fileName = link.toString().mid(link.scheme().length() + 1);
+    fileName = QUrl::fromPercentEncoding(fileName.toUtf8());
     user.cancelSentFileOffer(fileName);
     if (mChatStyle == "classic")
       addAllMessagesClassic();
@@ -1258,6 +1259,7 @@ void ChatWidget::anchorClicked(const QUrl &link) {
     // Receiver backs out of an incoming offer before accepting: notify the
     // sender (same wire message as a reject) and drop the row locally.
     QString fileName = link.toString().mid(link.scheme().length() + 1);
+    fileName = QUrl::fromPercentEncoding(fileName.toUtf8());
     Core.getProtocol()->send(FILE_OFFER_REJECTED, user.getI2PStreamID(), fileName.toUtf8());
     user.slotIncomingMessageFromSystem(tr("You cancelled the file \"%1\".").arg(fileName), true);
     if (mChatStyle == "classic")
@@ -1277,6 +1279,7 @@ void ChatWidget::anchorClicked(const QUrl &link) {
 
     const QString &action = parts.at(1);
     QString fileName = parts.mid(2).join(":"); // Restore filename if it contained colons
+    fileName = QUrl::fromPercentEncoding(fileName.toUtf8());
 
     if (action == "accept") {
       // Send acceptance over chat protocol
@@ -1650,18 +1653,19 @@ void ChatWidget::dropEvent(QDropEvent *event) {
     return;
 
   const auto urls = event->mimeData()->urls();
-  if (urls.isEmpty())
-    return;
 
-  QString filePath = urls.first().toLocalFile();
-  if (filePath.isEmpty())
-    return;
+  // Send every dropped file as an individual offer, not just the first one.
+  for (const QUrl &url : urls) {
+    QString filePath = url.toLocalFile();
+    if (filePath.isEmpty())
+      continue;
 
-  QFileInfo fi(filePath);
-  if (!fi.exists() || !fi.isFile())
-    return;
+    QFileInfo fi(filePath);
+    if (!fi.exists() || !fi.isFile())
+      continue;
 
-  startFileTransfer(filePath);
+    startFileTransfer(filePath);
+  }
 }
 
 void ChatWidget::startFileTransfer(const QString &filePath) {
