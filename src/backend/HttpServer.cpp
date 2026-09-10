@@ -293,6 +293,10 @@ QByteArray CSimpleHttpServer::buildDirectoryListing(const QFileInfo &dir, const 
   return header + content;
 }
 
+QByteArray CSimpleHttpServer::buildStreamingHeader(const QFileInfo &file) {
+  return buildHeader(200, QStringLiteral("OK"), file.size(), mimeTypeForName(file.fileName()), generateCSP());
+}
+
 QByteArray CSimpleHttpServer::tryCustomErrorPage(const QString &docroot, int statusCode, const QString &statusText) {
   QString path = docroot + QStringLiteral("/.resources/") + QString::number(statusCode) + QStringLiteral(".html");
   QFileInfo fi(path);
