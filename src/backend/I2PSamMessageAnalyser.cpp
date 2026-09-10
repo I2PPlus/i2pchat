@@ -95,6 +95,11 @@ const SAM_MESSAGE CI2PSamMessageAnalyser::Analyse(const QString &Message) const 
 
     // Get Message
     t.Message = getValue(Message, "Message");
+  } else if (list[0] == "PING") {
+    // SAM v3.2+ control socket keepalive probe. Echo the text after "PING" so the
+    // session controller can answer with PONG.
+    t.type = SAM_PING;
+    t.Message = Message.mid(4).trimmed();
   } else {
     t.type = ERROR_IN_ANALYSE;
   }
