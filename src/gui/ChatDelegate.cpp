@@ -502,21 +502,21 @@ bool ChatDelegate::editorEvent(QEvent *event,
     doc->setTextWidth(bubbleRect.width() - mColors.padH * 2);
   }
 
+  // Cancel ✕ is drawn on top of the text's right edge, and the document hit
+  // box is not shortened to leave room for it, so test the icon before
+  // anchorAt() — otherwise an overlapping anchor (accept/reject links on
+  // incoming offers) swallows cancel clicks.
+  QString cancelUrl = index.data(CancelUrlRole).toString();
+  if (!cancelUrl.isEmpty() && cancelIconRect(bubbleRect).contains(me->pos())) {
+    emit linkClicked(QUrl(cancelUrl));
+    return true;
+  }
+
   QPointF clickInDoc = QPointF(me->pos()) - docOrigin;
   QString anchor = doc->documentLayout()->anchorAt(clickInDoc);
 
   if (!anchor.isEmpty()) {
     emit linkClicked(QUrl(anchor));
-    return true;
-  }
-
-  // Check cancel icon click for any row that carries a cancel affordance.
-  // Pending messages, sent offers, received offers and system notices all set
-  // CancelUrlRole, and the icon is drawn in paint() whenever that role is set;
-  // the hit test must mirror that set so the ✕ is not dead on offer rows.
-  QString cancelUrl = index.data(CancelUrlRole).toString();
-  if (!cancelUrl.isEmpty() && cancelIconRect(bubbleRect).contains(me->pos())) {
-    emit linkClicked(QUrl(cancelUrl));
     return true;
   }
 
