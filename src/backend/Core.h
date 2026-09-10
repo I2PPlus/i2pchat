@@ -16,7 +16,7 @@
 #include <QSettings>
 #include <QTimer>
 
-#define CLIENTVERSION "0.2.43"
+#define CLIENTVERSION "0.2.44"
 #define CLIENTNAME "I2PChat"
 
 using namespace SAM_Message_Types;
